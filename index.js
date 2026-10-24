@@ -8,7 +8,7 @@ export default {
     context.logger?.info('토글 & 메쉬 매니저 플러그인이 로드되었습니다.');
 
     context.ui.registerMenuItem({
-      label: 'XXMI 토글 & 메쉬 매니저 열기…',
+      label: 'XXMI 토글 & 메쉬 매니저 열기',
       action: () => {
         context.logger?.debug('메뉴를 통해 토글 & 메쉬 매니저 탭을 열었습니다.');
         openManagerTab(context);
