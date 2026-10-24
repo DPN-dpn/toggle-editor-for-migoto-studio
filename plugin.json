@@ -1,11 +1,11 @@
 {
   "id": "toggle-manager",
   "name": "토글 키 매니저",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "토글 키([Key...]), 변수, 순환 상태를 손쉽게 시각적으로 조회하고 생성·수정합니다.",
   "author": "Modder",
   "icon": "🕹️",
   "category": "tools",
-  "location": "",
+  "location": "상단 메뉴 바",
   "main": "index.js"
 }
