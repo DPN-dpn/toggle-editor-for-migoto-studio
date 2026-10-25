@@ -124,3 +124,35 @@ export async function scanIniFiles(context) {
     return [];
   }
 }
+
+/**
+ * ; Constants ------------------------- 주석 라인의 인덱스를 찾습니다.
+ */
+export function findConstantsCommentLineIndex(lines) {
+  if (!Array.isArray(lines)) return -1;
+  const commentRegex = /^\s*;\s*-*\s*\[?\s*Constants\b/i;
+  for (let i = 0; i < lines.length; i++) {
+    if (commentRegex.test(lines[i])) {
+      return i;
+    }
+  }
+  return -1;
+}
+
+/**
+ * 특정 섹션의 끝 라인 인덱스(다음 섹션 시작 전 또는 후행 빈 라인 정리 위치)를 반환합니다.
+ */
+export function findSectionEndIndex(lines, secStartIdx) {
+  if (!Array.isArray(lines) || secStartIdx < 0) return lines ? lines.length : 0;
+  let end = lines.length;
+  for (let i = secStartIdx + 1; i < lines.length; i++) {
+    if (lines[i].trim().match(/^\[(.*?)\]$/)) {
+      end = i;
+      break;
+    }
+  }
+  while (end > secStartIdx + 1 && !lines[end - 1].trim()) {
+    end--;
+  }
+  return end;
+}

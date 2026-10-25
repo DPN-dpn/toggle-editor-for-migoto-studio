@@ -1,10 +1,9 @@
 /**
  * views/vars_view.js
- * [변수 설정] 탭 뷰 - [Constants] 변수 목록 및 기본값/상태값 관리
+ * [변수 설정] 탭 뷰 - [Constants] 변수 목록 및 기본값/영구보존 관리
  */
 import { toElement } from '../core/utils.js';
 import { upsertConstantVariable, removeConstantVariable } from '../core/parser.js';
-import { ensureActivePipeline } from '../core/active_pipeline.js';
 
 export function createVarsView({ context, state, actions }) {
   const varsSplit = context.ui.createSplitView({
@@ -50,7 +49,6 @@ export function createVarsView({ context, state, actions }) {
         name: `$custom_var_${idx}`,
         defaultValue: '0',
         isPersist: true,
-        states: ['0', '1'],
       };
       state.constantVars.push(newVar);
       state.selectedVarId = newVar.id;
@@ -87,10 +85,9 @@ export function createVarsView({ context, state, actions }) {
 
     filtered.forEach(v => {
       const isSelected = v.id === state.selectedVarId;
-      const statesStr = Array.isArray(v.states) ? v.states.join(', ') : '0, 1';
       const item = context.ui.createListItem({
         title: v.name,
-        subtitle: `기본값: ${v.defaultValue} | 상태: [${statesStr}]`,
+        subtitle: `기본값: ${v.defaultValue || '0'}`,
         badge: v.isPersist ? 'persist' : 'temp',
         selected: isSelected,
         onClick: () => {
@@ -120,7 +117,6 @@ export function createVarsView({ context, state, actions }) {
       onClick: async () => {
         let cur = await actions.loadIniContent();
         cur = upsertConstantVariable(cur, curVar.name, curVar.defaultValue || '0', curVar.isPersist);
-        cur = ensureActivePipeline(cur); // $active 파이프라인 자동 보장
         await actions.applyOrProposeIniChanges(cur, {
           title: `[${curVar.name}] 변수 저장 제안`,
           description: `[Constants] 섹션에 '${curVar.name}' 선언 및 기본값(${curVar.defaultValue || '0'}) 반영`,
@@ -219,26 +215,12 @@ export function createVarsView({ context, state, actions }) {
       },
     });
 
-    const inputStates = context.ui.createInput({
-      label: '상태값 목록',
-      value: Array.isArray(curVar.states) ? curVar.states.join(', ') : '0, 1',
-      placeholder: '0, 1 또는 0, 1, 2',
-      description: '이 변수가 가질 수 있는 상태 목록입니다. 키 토글이 없어도 조건문 탭에서 이 상태값에 맞춰 다중 선택 버튼이 제공됩니다.',
-      onInput: (val) => {
-        const parts = val.split(',').map(s => s.trim()).filter(Boolean);
-        curVar.states = parts.length > 0 ? parts : ['0', '1'];
-        updateVarsList();
-        actions.onVarsChanged?.();
-      },
-    });
-
     const formCol = context.ui.createColumn({
       gap: 12,
       children: [
         toElement(inputVarName),
         toElement(inputDefaultVal),
         toElement(chkPersist),
-        toElement(inputStates),
       ].filter(Boolean),
     });
 

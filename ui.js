@@ -200,7 +200,7 @@ export async function renderToggleManagerTab(container, context) {
       state.toggles.forEach(t => {
         const statesStr = Array.isArray(t.states) ? t.states.join(', ') : t.states;
         const props = {
-          key: t.key || 'no_modifiers VK_F4',
+          key: t.key || 'no_modifiers VK_UP',
           type: t.type || 'cycle',
           condition: '$active == 1',
         };
@@ -215,8 +215,10 @@ export async function renderToggleManagerTab(container, context) {
         }
       });
 
-      // $active 파이프라인 자동 보장
-      currentFull = ensureActivePipeline(currentFull);
+      // 토글 키가 존재할 때만 $active 파이프라인 자동 보장
+      if (state.toggles && state.toggles.length > 0) {
+        currentFull = ensureActivePipeline(currentFull);
+      }
 
       await applyOrProposeIniChanges(currentFull, {
         title: 'INI 전체 설정 적용 제안',

@@ -131,7 +131,9 @@ export function createMeshView({ context, state, actions }) {
           onConfirm: async ({ sectionName, hash }) => {
             let currentFull = await actions.loadIniContent();
             currentFull += `\n[${sectionName}]\nhash = ${hash}\n`;
-            currentFull = ensureActivePipeline(currentFull);
+            if (state.toggles && state.toggles.length > 0) {
+              currentFull = ensureActivePipeline(currentFull);
+            }
 
             context.logger?.info(`새 해시 스킵 섹션 추가 제안: [${sectionName}] (hash: ${hash})`);
             await actions.applyOrProposeIniChanges(currentFull, {
@@ -367,7 +369,9 @@ export function createMeshView({ context, state, actions }) {
       onClick: async () => {
         let cur = await actions.loadIniContent();
         cur = injectDrawIndexedConditions(cur, curMesh.sectionName, curMesh.drawCalls);
-        cur = ensureActivePipeline(cur); // $active 파이프라인 자동 보장
+        if (state.toggles && state.toggles.length > 0) {
+          cur = ensureActivePipeline(cur); // $active 파이프라인 자동 보장
+        }
         await actions.applyOrProposeIniChanges(cur, {
           title: `[${curMesh.sectionName}] 조건문 적용 제안`,
           description: curMesh.isSkipSection

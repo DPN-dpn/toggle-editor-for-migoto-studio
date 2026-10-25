@@ -86,7 +86,7 @@ export function createKeysView({ context, state, actions }) {
         id: `toggle_${Date.now()}`,
         sectionName: `KeyToggleOutfit${idx}`,
         comment: '',
-        key: 'no_modifiers VK_F4',
+        key: 'no_modifiers VK_UP',
         type: 'cycle',
         variableName: nextVar,
         states: initialStates,
@@ -169,7 +169,7 @@ export function createKeysView({ context, state, actions }) {
         let cur = await actions.loadIniContent();
         const statesStr = Array.isArray(toggle.states) ? toggle.states.join(', ') : toggle.states;
         const props = {
-          key: toggle.key || 'no_modifiers VK_F4',
+          key: toggle.key || 'no_modifiers VK_UP',
           type: toggle.type || 'cycle',
           condition: '$active == 1',
         };
@@ -251,14 +251,40 @@ export function createKeysView({ context, state, actions }) {
 
     const keyInput = context.ui.createKeyInput({
       label: '발동 단축키',
-      value: toggle.key || 'no_modifiers VK_F4',
-      description: '단축키 입력창의 버튼을 누르고 키보드를 누르면 3DMigoto 키코드가 자동 입력됩니다.',
+      value: toggle.key || 'no_modifiers VK_UP',
+      hideDetect: true,
+      showDetect: false,
+      hideDetectButton: true,
+      description: '[키 도우미] 버튼을 눌러 실시간 키 감지 및 3DMigoto 가상키를 설정할 수 있습니다.',
       onChange: (val) => {
         toggle.key = val;
         updateKeysList();
         updatePreview();
       },
     });
+
+    const keyInputEl = toElement(keyInput);
+    if (keyInputEl) {
+      // 키 감지는 키 도우미 창에서 동작하므로 인라인 키 감지 버튼 제거
+      const buttons = Array.from(keyInputEl.querySelectorAll('button'));
+      const detectBtn = buttons.find(b => {
+        const text = (b.textContent || '').trim();
+        const title = (b.title || '').trim();
+        const aria = (b.getAttribute('aria-label') || '').trim();
+        const cls = (b.className || '').trim();
+        const isHelper = text.includes('도우미') || title.includes('도우미') || aria.includes('도우미') || cls.includes('helper');
+        if (isHelper) return false;
+        return (
+          text.includes('감지') ||
+          title.includes('감지') ||
+          aria.includes('감지') ||
+          cls.includes('detect')
+        );
+      });
+      if (detectBtn) {
+        detectBtn.remove();
+      }
+    }
 
     const selectType = context.ui.createSelect({
       label: '토글 모드',
@@ -283,10 +309,10 @@ export function createKeysView({ context, state, actions }) {
     let customVarInput = null;
 
     selectVarWidget = context.ui.createSelect({
-      label: '연동 변수',
+      label: '조건',
       value: isCustomVar ? '__custom__' : (toggle.variableName || availableVars[0]),
       options: varOptions,
-      description: '1번 [변수 설정] 탭에 등록된 변수를 선택하여 이 단축키로 제어합니다.',
+      description: '[변수 설정] 탭에 등록된 변수를 선택하여 이 단축키로 제어합니다.',
       onChange: (val) => {
         if (val === '__custom__') {
           isCustomVar = true;

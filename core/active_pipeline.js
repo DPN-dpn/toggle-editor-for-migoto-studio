@@ -6,6 +6,8 @@
  * 3. vb2 = 가 있는 첫 번째 Blend 섹션 끝에 $active = 1 활성화 구문 보장
  */
 
+import { findConstantsCommentLineIndex, findSectionEndIndex } from './utils.js';
+
 /**
  * $active 변수 파이프라인을 검사하고 누락된 구문을 자동 주입합니다.
  * @param {string} fullText - INI 문서 전체 텍스트
@@ -24,25 +26,95 @@ export function ensureActivePipeline(fullText) {
       const insertPos = match.index + match[0].length;
       text = text.slice(0, insertPos) + '\nglobal $active = 0' + text.slice(insertPos);
     } else {
-      text = `[Constants]\nglobal $active = 0\n\n` + text;
+      // [Constants] 섹션이 없을 때: ; Constants ------------------------- 주석 확인
+      const lines = text.split(/\r?\n/);
+      const commentIdx = findConstantsCommentLineIndex(lines);
+      const newConstLines = ['[Constants]', 'global $active = 0'];
+
+      if (commentIdx !== -1) {
+        let insertIdx = commentIdx + 1;
+        while (insertIdx < lines.length && /^\s*;\s*[-=~#*]{3,}\s*$/.test(lines[insertIdx])) {
+          insertIdx++;
+        }
+        if (insertIdx < lines.length && lines[insertIdx].trim() === '') {
+          insertIdx++;
+        } else {
+          newConstLines.unshift('');
+        }
+        newConstLines.push('');
+        lines.splice(insertIdx, 0, ...newConstLines);
+        text = lines.join('\n');
+      } else {
+        text = `[Constants]\nglobal $active = 0\n\n` + text;
+      }
     }
   }
 
   // 2. [Present] 섹션 및 post $active = 0 확인
   const postActiveRegex = /^\s*post\s+\$active\s*=\s*0\b/mi;
   if (!postActiveRegex.test(text)) {
-    const presentRegex = /^\[Present\]/im;
+    const presentRegex = /^\[Presents?\]/im;
     const matchPresent = presentRegex.exec(text);
     if (matchPresent) {
       const insertPos = matchPresent.index + matchPresent[0].length;
       text = text.slice(0, insertPos) + '\npost $active = 0' + text.slice(insertPos);
     } else {
-      const nextSecRegex = /^\[(?:Key|TextureOverride)/im;
-      const matchNextSec = nextSecRegex.exec(text);
-      if (matchNextSec) {
-        text = text.slice(0, matchNextSec.index) + `[Present]\npost $active = 0\n\n` + text.slice(matchNextSec.index);
+      // [Present] 섹션이 없을 때:
+      // 위치 우선순위:
+      // A. 첫 번째 [Key...] 섹션 바로 앞
+      // B. [Constants] 섹션 바로 뒤
+      // C. ; Constants ------------------------- 주석 바로 뒤
+      // D. 첫 번째 Override 섹션 앞 또는 파일 끝
+      const lines = text.split(/\r?\n/);
+      let keyIdx = -1;
+      for (let i = 0; i < lines.length; i++) {
+        if (/^\[Key/i.test(lines[i].trim())) {
+          keyIdx = i;
+          break;
+        }
+      }
+
+      if (keyIdx !== -1) {
+        lines.splice(keyIdx, 0, '[Present]', 'post $active = 0', '');
+        text = lines.join('\n');
       } else {
-        text += `\n\n[Present]\npost $active = 0\n`;
+        let constStart = -1;
+        for (let i = 0; i < lines.length; i++) {
+          if (/^\[Constants\]/i.test(lines[i].trim())) {
+            constStart = i;
+            break;
+          }
+        }
+        if (constStart !== -1) {
+          const constEnd = findSectionEndIndex(lines, constStart);
+          lines.splice(constEnd, 0, '', '[Present]', 'post $active = 0');
+          text = lines.join('\n');
+        } else {
+          const commentIdx = findConstantsCommentLineIndex(lines);
+          if (commentIdx !== -1) {
+            let insertIdx = commentIdx + 1;
+            while (insertIdx < lines.length && /^\s*;\s*[-=~#*]{3,}\s*$/.test(lines[insertIdx])) {
+              insertIdx++;
+            }
+            const newPresent = ['[Present]', 'post $active = 0'];
+            if (insertIdx < lines.length && lines[insertIdx].trim() === '') {
+              insertIdx++;
+            } else {
+              newPresent.unshift('');
+            }
+            newPresent.push('');
+            lines.splice(insertIdx, 0, ...newPresent);
+            text = lines.join('\n');
+          } else {
+            const nextSecRegex = /^\[(?:TextureOverride|ShaderOverride)/im;
+            const matchNextSec = nextSecRegex.exec(text);
+            if (matchNextSec) {
+              text = text.slice(0, matchNextSec.index) + `[Present]\npost $active = 0\n\n` + text.slice(matchNextSec.index);
+            } else {
+              text += `\n\n[Present]\npost $active = 0\n`;
+            }
+          }
+        }
       }
     }
   }

@@ -2,7 +2,7 @@
  * XXMI 토글 & 메쉬 매니저 - INI 파서 및 조건문 생성 엔진 (Core 모듈)
  * 3DMigoto/XXMI 특화: 다중 drawindexed 분할 섹션, if-endif 제어 블록, 주석 및 헤더 무손실 보존
  */
-import { isContentLine, isAuxiliaryPipelineSection, toElement } from './utils.js';
+import { isContentLine, isAuxiliaryPipelineSection, toElement, findConstantsCommentLineIndex, findSectionEndIndex } from './utils.js';
 import { ensureActivePipeline } from './active_pipeline.js';
 import * as ttl from './ttl.js';
 
@@ -576,6 +576,7 @@ export function injectDrawIndexedConditions(fullText, sectionName, drawCalls) {
 
 /**
  * [Constants] 섹션에 변수 선언이 존재하는지 확인하고 안전하게 삽입합니다.
+ * ; Constants ------------------------- 주석이 있으면 해당 주석 아래에 추가합니다.
  */
 export function ensureConstantVariable(fullText, varName, defaultVal = 0) {
   if (!varName || !varName.startsWith('$')) return fullText;
@@ -590,13 +591,34 @@ export function ensureConstantVariable(fullText, varName, defaultVal = 0) {
     const insertPos = match.index + match[0].length;
     const addition = `\nglobal persist ${varName} = ${defaultVal}`;
     return fullText.slice(0, insertPos) + addition + fullText.slice(insertPos);
-  } else {
-    return `[Constants]\nglobal persist ${varName} = ${defaultVal}\n\n` + fullText;
   }
+
+  // [Constants] 섹션이 없을 때: ; Constants ------------------------- 주석 확인
+  const lines = fullText.split(/\r?\n/);
+  const commentIdx = findConstantsCommentLineIndex(lines);
+  const newConstLines = ['[Constants]', `global persist ${varName} = ${defaultVal}`];
+
+  if (commentIdx !== -1) {
+    let insertIdx = commentIdx + 1;
+    while (insertIdx < lines.length && /^\s*;\s*[-=~#*]{3,}\s*$/.test(lines[insertIdx])) {
+      insertIdx++;
+    }
+    if (insertIdx < lines.length && lines[insertIdx].trim() === '') {
+      insertIdx++;
+    } else {
+      newConstLines.unshift('');
+    }
+    newConstLines.push('');
+    lines.splice(insertIdx, 0, ...newConstLines);
+    return lines.join('\n');
+  }
+
+  return `[Constants]\nglobal persist ${varName} = ${defaultVal}\n\n` + fullText;
 }
 
 /**
  * [Constants] 섹션에 변수를 추가하거나 기존 변수 선언(값/persist 여부)을 갱신합니다.
+ * [Constants]가 없는 경우 ; Constants ------------------------- 주석 아래에 추가합니다.
  */
 export function upsertConstantVariable(fullText, varName, defaultVal = 0, isPersist = true) {
   if (!varName || !varName.startsWith('$')) return fullText;
@@ -619,6 +641,25 @@ export function upsertConstantVariable(fullText, varName, defaultVal = 0, isPers
   const targetLine = `${prefix} ${varName} = ${defaultVal}`;
 
   if (constStart === -1) {
+    // [Constants] 섹션이 없을 때: ; Constants 주석 아래에 추가
+    const commentIdx = findConstantsCommentLineIndex(lines);
+    const newConstLines = ['[Constants]', targetLine];
+
+    if (commentIdx !== -1) {
+      let insertIdx = commentIdx + 1;
+      while (insertIdx < lines.length && /^\s*;\s*[-=~#*]{3,}\s*$/.test(lines[insertIdx])) {
+        insertIdx++;
+      }
+      if (insertIdx < lines.length && lines[insertIdx].trim() === '') {
+        insertIdx++;
+      } else {
+        newConstLines.unshift('');
+      }
+      newConstLines.push('');
+      lines.splice(insertIdx, 0, ...newConstLines);
+      return lines.join('\n');
+    }
+
     return `[Constants]\n${targetLine}\n\n` + fullText;
   }
 
@@ -707,6 +748,82 @@ export function injectSectionProps(fullText, sectionName, props) {
   if (startIdx !== -1) {
     lines.splice(startIdx, endIdx - startIdx, ...newSectionLines);
   } else {
+    // 새 섹션 삽입 위치 계산:
+    // [Key...] 섹션이거나 Constants 블록에 속하는 섹션인 경우
+    const isKeySection = /^Key/i.test(sectionName);
+
+    // 1. 기존 [Key...] 섹션들이 이미 있는 경우: 마지막 [Key...] 섹션 바로 뒤에 배치
+    let lastKeyEnd = -1;
+    for (let i = 0; i < lines.length; i++) {
+      if (/^\[Key/i.test(lines[i].trim())) {
+        lastKeyEnd = findSectionEndIndex(lines, i);
+      }
+    }
+
+    if (lastKeyEnd !== -1) {
+      lines.splice(lastKeyEnd, 0, '', ...newSectionLines);
+      return lines.join('\n');
+    }
+
+    // 2. [Present] 섹션이 있는 경우: [Present] 섹션 바로 뒤에 배치
+    let presentStart = -1;
+    for (let i = 0; i < lines.length; i++) {
+      if (/^\[Presents?\]/i.test(lines[i].trim())) {
+        presentStart = i;
+        break;
+      }
+    }
+    if (presentStart !== -1) {
+      const presentEnd = findSectionEndIndex(lines, presentStart);
+      lines.splice(presentEnd, 0, '', ...newSectionLines);
+      return lines.join('\n');
+    }
+
+    // 3. [Constants] 섹션이 있는 경우: [Constants] 섹션 바로 뒤에 배치
+    let constStart = -1;
+    for (let i = 0; i < lines.length; i++) {
+      if (/^\[Constants\]/i.test(lines[i].trim())) {
+        constStart = i;
+        break;
+      }
+    }
+    if (constStart !== -1) {
+      const constEnd = findSectionEndIndex(lines, constStart);
+      lines.splice(constEnd, 0, '', ...newSectionLines);
+      return lines.join('\n');
+    }
+
+    // 4. '; Constants -------------------------' 주석이 있는 경우: 해당 주석 바로 아래에 배치
+    const commentIdx = findConstantsCommentLineIndex(lines);
+    if (commentIdx !== -1) {
+      let insertIdx = commentIdx + 1;
+      while (insertIdx < lines.length && /^\s*;\s*[-=~#*]{3,}\s*$/.test(lines[insertIdx])) {
+        insertIdx++;
+      }
+      if (insertIdx < lines.length && lines[insertIdx].trim() === '') {
+        insertIdx++;
+      } else {
+        newSectionLines.unshift('');
+      }
+      newSectionLines.push('');
+      lines.splice(insertIdx, 0, ...newSectionLines);
+      return lines.join('\n');
+    }
+
+    // 5. 첫 번째 섹션(예: [TextureOverride...])이 있다면 그 앞에 배치
+    let firstSecIdx = -1;
+    for (let i = 0; i < lines.length; i++) {
+      if (/^\[.*?\]$/.test(lines[i].trim())) {
+        firstSecIdx = i;
+        break;
+      }
+    }
+    if (firstSecIdx !== -1 && isKeySection) {
+      lines.splice(firstSecIdx, 0, ...newSectionLines, '');
+      return lines.join('\n');
+    }
+
+    // 6. 그 외 기본 fallback (파일 끝에 추가)
     lines.push('', ...newSectionLines);
   }
   return lines.join('\n');
