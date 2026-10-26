@@ -2,11 +2,11 @@
  * XXMI 토글 & 메쉬 매니저 - INI 파서 및 조건문 생성 엔진 (Core 모듈)
  * 3DMigoto/XXMI 특화: 다중 drawindexed 분할 섹션, if-endif 제어 블록, 주석 및 헤더 무손실 보존
  */
-import { isContentLine, isAuxiliaryPipelineSection, toElement, findConstantsCommentLineIndex, findSectionEndIndex } from './utils.js';
-import { ensureActivePipeline } from './active_pipeline.js';
+import { isContentLine, isAuxiliaryPipelineSection, toElement, findConstantsCommentLineIndex, findSectionEndIndex, removeEmptySection } from './utils.js';
+import { ensureActivePipeline, removeActivePipeline } from './active_pipeline.js';
 import * as ttl from './ttl.js';
 
-export { toElement, ensureActivePipeline, ttl };
+export { toElement, ensureActivePipeline, removeActivePipeline, ttl, removeEmptySection };
 
 /**
  * INI 텍스트에서 토글 섹션([Key...]), [Constants] 변수, 메쉬 오버라이드 섹션을 파싱합니다.
@@ -581,20 +581,41 @@ export function injectDrawIndexedConditions(fullText, sectionName, drawCalls) {
 export function ensureConstantVariable(fullText, varName, defaultVal = 0) {
   if (!varName || !varName.startsWith('$')) return fullText;
 
-  const regex = new RegExp(`^\\s*\\${varName}\\s*=`, 'mi');
-  if (regex.test(fullText)) return fullText;
+  const lines = fullText.split(/\r?\n/);
+  let constStart = -1;
+  let constEnd = lines.length;
 
-  const constantsRegex = /^\[Constants\]/im;
-  const match = constantsRegex.exec(fullText);
-
-  if (match) {
-    const insertPos = match.index + match[0].length;
-    const addition = `\nglobal persist ${varName} = ${defaultVal}`;
-    return fullText.slice(0, insertPos) + addition + fullText.slice(insertPos);
+  for (let i = 0; i < lines.length; i++) {
+    const trimmed = lines[i].trim();
+    if (trimmed.match(/^\[Constants\]/i)) {
+      constStart = i;
+    } else if (constStart !== -1 && trimmed.startsWith('[') && trimmed.includes(']')) {
+      constEnd = i;
+      break;
+    }
   }
 
-  // [Constants] 섹션이 없을 때: ; Constants ------------------------- 주석 확인
-  const lines = fullText.split(/\r?\n/);
+  const escapedVar = varName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const varRegex = new RegExp(`^\\s*(?:global\\s+)?(?:persist\\s+)?${escapedVar}\\s*=`, 'i');
+
+  // 1. [Constants] 섹션이 존재할 때: 이미 선언된 변수인지 검사
+  if (constStart !== -1) {
+    for (let i = constStart + 1; i < constEnd; i++) {
+      if (varRegex.test(lines[i].trim())) {
+        return fullText; // 이미 선언되어 있으므로 중복 추가하지 않음
+      }
+    }
+
+    // 선언이 없는 경우 [Constants] 섹션 끝에 추가
+    let insertIdx = constEnd;
+    while (insertIdx > constStart + 1 && !lines[insertIdx - 1].trim()) {
+      insertIdx--;
+    }
+    lines.splice(insertIdx, 0, `global persist ${varName} = ${defaultVal}`);
+    return lines.join('\n');
+  }
+
+  // 2. [Constants] 섹션이 아예 없을 때: ; Constants ------------------------- 주석 확인
   const commentIdx = findConstantsCommentLineIndex(lines);
   const newConstLines = ['[Constants]', `global persist ${varName} = ${defaultVal}`];
 
@@ -664,9 +685,10 @@ export function upsertConstantVariable(fullText, varName, defaultVal = 0, isPers
   }
 
   let foundLineIdx = -1;
+  const escapedVar = varName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const regex = new RegExp(`^\\s*(?:global\\s+)?(?:persist\\s+)?${escapedVar}\\s*=`, 'i');
   for (let i = constStart + 1; i < constEnd; i++) {
     const trimmed = lines[i].trim();
-    const regex = new RegExp(`^(?:(?:global\\s+(?:persist\\s+)?)?\\${varName}\\s*=)`, 'i');
     if (regex.test(trimmed)) {
       foundLineIdx = i;
       break;
@@ -707,7 +729,8 @@ export function removeConstantVariable(fullText, varName) {
 
   if (constStart === -1) return fullText;
 
-  const regex = new RegExp(`^(?:(?:global\\s+(?:persist\\s+)?)?\\${varName}\\s*=)`, 'i');
+  const escapedVar = varName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const regex = new RegExp(`^\\s*(?:global\\s+)?(?:persist\\s+)?${escapedVar}\\s*=`, 'i');
   const filtered = [];
 
   for (let i = 0; i < lines.length; i++) {
@@ -717,7 +740,8 @@ export function removeConstantVariable(fullText, varName) {
     filtered.push(lines[i]);
   }
 
-  return filtered.join('\n');
+  const result = filtered.join('\n');
+  return removeEmptySection(result, 'Constants');
 }
 
 /**

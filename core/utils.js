@@ -156,3 +156,56 @@ export function findSectionEndIndex(lines, secStartIdx) {
   }
   return end;
 }
+
+/**
+ * 지정된 섹션에 유효한 설정/변수 구문이 없으면 해당 섹션(헤더 및 빈 줄)을 삭제합니다.
+ */
+export function removeEmptySection(fullText, sectionName) {
+  if (!fullText || typeof fullText !== 'string' || !sectionName) return fullText;
+  const lines = fullText.split(/\r?\n/);
+  let startIdx = -1;
+  let nextSecIdx = lines.length;
+
+  for (let i = 0; i < lines.length; i++) {
+    const match = lines[i].trim().match(/^\[(.*?)\]$/);
+    if (match) {
+      if (match[1].trim().toLowerCase() === sectionName.toLowerCase()) {
+        startIdx = i;
+      } else if (startIdx !== -1) {
+        nextSecIdx = i;
+        break;
+      }
+    }
+  }
+
+  if (startIdx === -1) return fullText;
+
+  // startIdx + 1 부터 nextSecIdx 직전까지 실제 유효한 프로퍼티(할당 구문 등)가 있는지 검사
+  // 주석이나 공백 라인은 유효 내용으로 치지 않음
+  let hasContent = false;
+  for (let i = startIdx + 1; i < nextSecIdx; i++) {
+    const trimmed = lines[i].trim();
+    if (trimmed && !trimmed.startsWith(';') && !trimmed.startsWith('#')) {
+      hasContent = true;
+      break;
+    }
+  }
+
+  if (hasContent) {
+    return fullText; // 내용이 남아있으므로 삭제하지 않음
+  }
+
+  // 내용이 없으므로 startIdx(헤더)부터 빈 라인 정리하여 삭제
+  let deleteEndIdx = startIdx + 1;
+  while (deleteEndIdx < nextSecIdx && !lines[deleteEndIdx].trim()) {
+    deleteEndIdx++;
+  }
+
+  let deleteStartIdx = startIdx;
+  if (deleteStartIdx > 0 && !lines[deleteStartIdx - 1].trim() && deleteEndIdx < lines.length && !lines[deleteEndIdx].trim()) {
+    deleteEndIdx++;
+  }
+
+  lines.splice(deleteStartIdx, deleteEndIdx - deleteStartIdx);
+  return lines.join('\n');
+}

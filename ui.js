@@ -14,6 +14,7 @@ import {
   getVarDisplayName,
   detectConditionMode,
   scanIniFiles,
+  removeEmptySection,
 } from './core/utils.js';
 import {
   parseIniDocument,
@@ -21,7 +22,7 @@ import {
   injectSectionProps,
   injectDrawIndexedConditions,
 } from './core/parser.js';
-import { ensureActivePipeline } from './core/active_pipeline.js';
+import { ensureActivePipeline, removeActivePipeline } from './core/active_pipeline.js';
 import { createToolbar } from './components/toolbar.js';
 import { createVarsView } from './views/vars_view.js';
 import { createKeysView } from './views/keys_view.js';
@@ -215,10 +216,17 @@ export async function renderToggleManagerTab(container, context) {
         }
       });
 
-      // 토글 키가 존재할 때만 $active 파이프라인 자동 보장
+      // 토글 키가 존재할 때만 $active 파이프라인 자동 보장 (없으면 잔여 구문 제거)
       if (state.toggles && state.toggles.length > 0) {
         currentFull = ensureActivePipeline(currentFull);
+      } else {
+        currentFull = removeActivePipeline(currentFull);
       }
+
+      // [Present], [Constants] 섹션에 내용이 안 남았으면 섹션도 함께 삭제
+      currentFull = removeEmptySection(currentFull, 'Present');
+      currentFull = removeEmptySection(currentFull, 'Presents');
+      currentFull = removeEmptySection(currentFull, 'Constants');
 
       await applyOrProposeIniChanges(currentFull, {
         title: 'INI 전체 설정 적용 제안',

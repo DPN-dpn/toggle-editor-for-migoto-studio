@@ -142,10 +142,13 @@ export function createVarsView({ context, state, actions }) {
 
         let cur = await actions.loadIniContent();
         cur = removeConstantVariable(cur, curVar.name);
+        const hasConstants = /^\[Constants\]/im.test(cur);
         context.logger?.info(`변수 삭제 제안: [${curVar.name}]`);
         await actions.applyOrProposeIniChanges(cur, {
           title: `[${curVar.name}] 변수 삭제 제안`,
-          description: `[Constants] 섹션에서 '${curVar.name}' 변수 선언을 제거합니다.`,
+          description: hasConstants
+            ? `[Constants] 섹션에서 '${curVar.name}' 변수 선언을 제거합니다.`
+            : `[Constants] 섹션에서 '${curVar.name}' 변수를 제거하고, 남은 변수가 없으므로 [Constants] 섹션을 함께 삭제합니다.`,
           onAccepted: () => {
             state.constantVars = state.constantVars.filter(v => v.id !== curVar.id);
             state.selectedVarId = state.constantVars.length > 0 ? state.constantVars[0].id : null;

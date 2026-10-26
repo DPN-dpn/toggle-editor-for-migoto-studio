@@ -2,14 +2,14 @@
  * views/keys_view.js
  * [키 설정] 탭 뷰 - [Key...] 섹션 목록, 단축키 바인딩 및 순환 변수/상태값 관리
  */
-import { toElement, getSectionDisplayName, getFullSectionName } from '../core/utils.js';
+import { toElement, getSectionDisplayName, getFullSectionName, removeEmptySection } from '../core/utils.js';
 import {
   buildToggleSnippet,
   ensureConstantVariable,
   injectSectionProps,
   removeSectionFromText,
 } from '../core/parser.js';
-import { ensureActivePipeline } from '../core/active_pipeline.js';
+import { ensureActivePipeline, removeActivePipeline } from '../core/active_pipeline.js';
 
 export function createKeysView({ context, state, actions }) {
   const keysSplit = context.ui.createSplitView({
@@ -206,10 +206,24 @@ export function createKeysView({ context, state, actions }) {
         let cur = await actions.loadIniContent();
         cur = removeSectionFromText(cur, toggle.sectionName);
 
+        // 남은 토글 키가 없으면 $active 파이프라인 구문들 제거
+        const remainingToggles = (state.toggles || []).filter(t => t.id !== toggle.id);
+        const isLastToggle = remainingToggles.length === 0 || !/^\[Key/im.test(cur);
+        if (isLastToggle) {
+          cur = removeActivePipeline(cur);
+        }
+
+        // [Present], [Constants] 섹션에 내용이 안 남았으면 섹션도 함께 삭제
+        cur = removeEmptySection(cur, 'Present');
+        cur = removeEmptySection(cur, 'Presents');
+        cur = removeEmptySection(cur, 'Constants');
+
         context.logger?.info(`토글 키 섹션 삭제 제안: [${toggle.sectionName}]`);
         await actions.applyOrProposeIniChanges(cur, {
           title: `[${toggle.sectionName}] 토글 섹션 삭제 제안`,
-          description: `'[${toggle.sectionName}]' 섹션을 제거합니다. 에디터 인라인 Diff에서 확인 후 수락하세요.`,
+          description: isLastToggle
+            ? `'[${toggle.sectionName}]' 섹션을 제거하고, 잔여 토글 키가 없으므로 $active 파이프라인 및 빈 섹션을 정리합니다.`
+            : `'[${toggle.sectionName}]' 섹션을 제거합니다. 에디터 인라인 Diff에서 확인 후 수락하세요.`,
           onAccepted: () => {
             state.toggles = state.toggles.filter(t => t.id !== toggle.id);
             state.selectedToggleId = state.toggles.length > 0 ? state.toggles[0].id : null;

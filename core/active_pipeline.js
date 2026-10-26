@@ -6,7 +6,7 @@
  * 3. vb2 = 가 있는 첫 번째 Blend 섹션 끝에 $active = 1 활성화 구문 보장
  */
 
-import { findConstantsCommentLineIndex, findSectionEndIndex } from './utils.js';
+import { findConstantsCommentLineIndex, findSectionEndIndex, removeEmptySection } from './utils.js';
 
 /**
  * $active 변수 파이프라인을 검사하고 누락된 구문을 자동 주입합니다.
@@ -152,3 +152,51 @@ export function ensureActivePipeline(fullText) {
 
   return text;
 }
+
+/**
+ * $active 변수 파이프라인 구문들을 문서에서 제거합니다.
+ * 토글 키가 모두 삭제되었을 때 호출되어 잔여 $active 선언 및 리셋 구문을 정리합니다.
+ * @param {string} fullText - INI 문서 전체 텍스트
+ * @returns {string} $active 구문이 정리된 INI 문서 텍스트
+ */
+export function removeActivePipeline(fullText) {
+  if (!fullText || typeof fullText !== 'string') return fullText;
+
+  const lines = fullText.split(/\r?\n/);
+  const activeConstRegex = /^\s*(?:global\s+)?(?:persist\s+)?\$active\s*=/i;
+  const postActiveRegex = /^\s*post\s+\$active\s*=/i;
+  const activeSetRegex = /^\s*\$active\s*=\s*1\b/i;
+
+  let currentSection = null;
+  const filtered = [];
+
+  for (let i = 0; i < lines.length; i++) {
+    const raw = lines[i];
+    const trimmed = raw.trim();
+    const secMatch = trimmed.match(/^\[(.*?)\]$/);
+    if (secMatch) {
+      currentSection = secMatch[1].trim().toLowerCase();
+      filtered.push(raw);
+      continue;
+    }
+
+    if (currentSection === 'constants' && activeConstRegex.test(trimmed)) {
+      continue;
+    }
+    if ((currentSection === 'present' || currentSection === 'presents') && postActiveRegex.test(trimmed)) {
+      continue;
+    }
+    if (activeSetRegex.test(trimmed)) {
+      continue;
+    }
+
+    filtered.push(raw);
+  }
+
+  let result = filtered.join('\n');
+  result = removeEmptySection(result, 'Present');
+  result = removeEmptySection(result, 'Presents');
+  result = removeEmptySection(result, 'Constants');
+  return result;
+}
+
