@@ -3,8 +3,6 @@
  * [조건문 설정] 탭 뷰 - 메쉬 섹션별 drawindexed / TTL / handling = skip 부위 조건문 관리
  */
 import { toElement, detectConditionMode } from '../core/utils.js';
-import { injectDrawIndexedConditions } from '../core/parser.js';
-import { ensureActivePipeline } from '../core/active_pipeline.js';
 import * as ttl from '../core/ttl.js';
 import { openAddHashSkipModal } from '../components/skip_modal.js';
 
@@ -129,28 +127,33 @@ export function createMeshView({ context, state, actions }) {
           context,
           meshSections: state.meshSections,
           onConfirm: async ({ sectionName, hash }) => {
-            let currentFull = await actions.loadIniContent();
-            currentFull += `\n[${sectionName}]\nhash = ${hash}\n`;
-            if (state.toggles && state.toggles.length > 0) {
-              currentFull = ensureActivePipeline(currentFull);
+            state.newSkipSections = state.newSkipSections || [];
+            state.newSkipSections.push({ sectionName, hash });
+
+            let targetMesh = (state.meshSections || []).find(m => m.sectionName.toLowerCase() === sectionName.toLowerCase());
+            if (!targetMesh) {
+              targetMesh = {
+                id: Date.now(),
+                sectionName,
+                isSkipSection: true,
+                drawCalls: [{
+                  id: 1,
+                  index: 0,
+                  value: 'handling = skip',
+                  condition: null,
+                }],
+              };
+              state.meshSections.push(targetMesh);
             }
 
-            context.logger?.info(`새 해시 스킵 섹션 추가 제안: [${sectionName}] (hash: ${hash})`);
-            await actions.applyOrProposeIniChanges(currentFull, {
-              title: `[${sectionName}] 스킵 섹션 추가 제안`,
-              description: `해시(${hash}) 기반 신규 스킵 섹션 생성 검토`,
-              onAccepted: () => {
-                const created = (state.meshSections || []).find(m => m.sectionName.toLowerCase() === sectionName.toLowerCase());
-                if (created) {
-                  state.selectedMeshId = created.id;
-                  state.selectedDrawCallId = created.drawCalls && created.drawCalls[0] ? created.drawCalls[0].id : null;
-                  state.meshMode = 'simple';
-                  renderMeshSectionSelector();
-                  updateMeshList();
-                  updateMeshDetail();
-                }
-              },
-            });
+            state.selectedMeshId = targetMesh.id;
+            state.selectedDrawCallId = targetMesh.drawCalls && targetMesh.drawCalls[0] ? targetMesh.drawCalls[0].id : null;
+            state.meshMode = 'simple';
+            renderMeshSectionSelector();
+            updateMeshList();
+            updateMeshDetail();
+            context.logger?.info(`매니저에 스킵 섹션 추가: [${sectionName}] (hash: ${hash})`);
+            context.ui.showToast(`[${sectionName}] 스킵 섹션이 매니저에 추가되었습니다. 상단 [적용]을 누르면 파일에 반영됩니다.`, 'info');
           },
         });
       },
@@ -363,26 +366,6 @@ export function createMeshView({ context, state, actions }) {
       },
     });
 
-    const btnApplyMesh = context.ui.createButton({
-      text: '메쉬 섹션에 적용',
-      variant: 'primary',
-      onClick: async () => {
-        let cur = await actions.loadIniContent();
-        cur = injectDrawIndexedConditions(cur, curMesh.sectionName, curMesh.drawCalls);
-        if (state.toggles && state.toggles.length > 0) {
-          cur = ensureActivePipeline(cur); // $active 파이프라인 자동 보장
-        }
-        await actions.applyOrProposeIniChanges(cur, {
-          title: `[${curMesh.sectionName}] 조건문 적용 제안`,
-          description: curMesh.isSkipSection
-            ? '악세서리/소품 스킵(지우기) 조건문 변경 검토'
-            : '서브메쉬 파트별 drawindexed 조건문 변경 검토',
-          onAccepted: () => {
-            updateMeshList();
-          },
-        });
-      },
-    });
 
     let previewBlock = null;
     let fallbackPre = null;
@@ -765,7 +748,7 @@ export function createMeshView({ context, state, actions }) {
         ? `섹션: ${curMesh.sectionName} (메쉬 지우기 / 스킵 섹션)`
         : (isTtlMesh ? `섹션: ${curMesh.sectionName} (TTL 반투명 드로우 블록)` : `섹션: ${curMesh.sectionName}`),
       content: modeInnerEl,
-      actions: [btnResetMeshConds, btnApplyMesh].filter(Boolean),
+      actions: [btnResetMeshConds].filter(Boolean),
     });
 
     const previewCard = context.ui.createCard({

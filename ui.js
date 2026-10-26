@@ -19,7 +19,10 @@ import {
 import {
   parseIniDocument,
   upsertConstantVariable,
+  removeConstantVariable,
+  ensureConstantVariable,
   injectSectionProps,
+  removeSectionFromText,
   injectDrawIndexedConditions,
 } from './core/parser.js';
 import { ensureActivePipeline, removeActivePipeline } from './core/active_pipeline.js';
@@ -144,6 +147,9 @@ export async function renderToggleManagerTab(container, context) {
     selectedMeshId: pickBestMesh(doc.meshSections),
     selectedDrawCallId: null,
     meshMode: 'simple',
+    deletedVarNames: new Set(),
+    deletedToggleSections: new Set(),
+    newSkipSections: [],
   };
 
   const initialMesh = state.meshSections.find(m => m.id === state.selectedMeshId);
@@ -192,12 +198,33 @@ export async function renderToggleManagerTab(container, context) {
       }
       let currentFull = await loadIniContent();
 
-      // [Constants] 변수들 동기화
+      // 1. 삭제 대기 중인 토글 키 섹션 제거
+      if (state.deletedToggleSections && state.deletedToggleSections.size > 0) {
+        for (const sec of state.deletedToggleSections) {
+          currentFull = removeSectionFromText(currentFull, sec);
+        }
+      }
+
+      // 2. 삭제 대기 중인 변수 선언 제거
+      if (state.deletedVarNames && state.deletedVarNames.size > 0) {
+        for (const vn of state.deletedVarNames) {
+          currentFull = removeConstantVariable(currentFull, vn);
+        }
+      }
+
+      // 3. 신규 추가된 스킵 섹션 주입
+      if (state.newSkipSections && state.newSkipSections.length > 0) {
+        for (const skip of state.newSkipSections) {
+          currentFull = injectSectionProps(currentFull, skip.sectionName, { hash: skip.hash });
+        }
+      }
+
+      // 4. [Constants] 변수들 동기화
       state.constantVars.forEach(v => {
         currentFull = upsertConstantVariable(currentFull, v.name, v.defaultValue || '0', v.isPersist);
       });
 
-      // [Key...] 토글 섹션들 동기화
+      // 5. [Key...] 토글 섹션들 동기화
       state.toggles.forEach(t => {
         const statesStr = Array.isArray(t.states) ? t.states.join(', ') : t.states;
         const props = {
@@ -205,25 +232,29 @@ export async function renderToggleManagerTab(container, context) {
           type: t.type || 'cycle',
           condition: '$active == 1',
         };
-        if (t.variableName) props[t.variableName] = statesStr;
+        if (t.variableName) {
+          props[t.variableName] = statesStr;
+          currentFull = ensureConstantVariable(currentFull, t.variableName, 0);
+        }
         currentFull = injectSectionProps(currentFull, t.sectionName, props);
       });
 
-      // 메쉬 섹션별 drawindexed 조건문도 동기화
+      // 6. 메쉬 섹션별 drawindexed / TTL / handling = skip 조건문 동기화
       state.meshSections.forEach(m => {
         if (m.drawCalls && m.drawCalls.length > 0) {
           currentFull = injectDrawIndexedConditions(currentFull, m.sectionName, m.drawCalls);
         }
       });
 
-      // 토글 키가 존재할 때만 $active 파이프라인 자동 보장 (없으면 잔여 구문 제거)
+      // 7. 토글 키가 존재할 때만 $active 파이프라인 자동 보장 (잔여 토글이 전혀 없으면 정리)
+      const hasAnyToggle = (state.toggles && state.toggles.length > 0) || /^\[Key/im.test(currentFull);
       if (state.toggles && state.toggles.length > 0) {
         currentFull = ensureActivePipeline(currentFull);
-      } else {
+      } else if (!hasAnyToggle) {
         currentFull = removeActivePipeline(currentFull);
       }
 
-      // [Present], [Constants] 섹션에 내용이 안 남았으면 섹션도 함께 삭제
+      // 8. [Present], [Constants] 섹션에 내용이 안 남았으면 섹션도 함께 삭제
       currentFull = removeEmptySection(currentFull, 'Present');
       currentFull = removeEmptySection(currentFull, 'Presents');
       currentFull = removeEmptySection(currentFull, 'Constants');
@@ -231,6 +262,12 @@ export async function renderToggleManagerTab(container, context) {
       await applyOrProposeIniChanges(currentFull, {
         title: 'INI 전체 설정 적용 제안',
         description: '변수, 토글 키, 메쉬 조건문 및 $active 파이프라인 변경 사항을 인라인으로 검토하세요.',
+        onAccepted: () => {
+          if (state.deletedVarNames) state.deletedVarNames.clear();
+          if (state.deletedToggleSections) state.deletedToggleSections.clear();
+          state.newSkipSections = [];
+          context.ui.showToast('전체 변경 사항이 성공적으로 저장되었습니다.', 'success');
+        },
       });
     },
   });
@@ -282,6 +319,9 @@ export async function renderToggleManagerTab(container, context) {
     state.selectedMeshId = null;
     state.selectedDrawCallId = null;
     state.meshMode = 'simple';
+    state.deletedVarNames = new Set();
+    state.deletedToggleSections = new Set();
+    state.newSkipSections = [];
     rawIni = '';
     doc = { toggles: [], constants: {}, constantVars: [], meshSections: [] };
     iniFiles = [];
@@ -313,6 +353,9 @@ export async function renderToggleManagerTab(container, context) {
     state.constants = doc.constants;
     state.constantVars = doc.constantVars || [];
     state.meshSections = doc.meshSections;
+    state.deletedVarNames = new Set();
+    state.deletedToggleSections = new Set();
+    state.newSkipSections = [];
 
     if (preserveSelection && state.constantVars.some(v => v.id === prevVarId)) {
       state.selectedVarId = prevVarId;

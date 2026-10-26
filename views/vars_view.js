@@ -3,7 +3,6 @@
  * [변수 설정] 탭 뷰 - [Constants] 변수 목록 및 기본값/영구보존 관리
  */
 import { toElement } from '../core/utils.js';
-import { upsertConstantVariable, removeConstantVariable } from '../core/parser.js';
 
 export function createVarsView({ context, state, actions }) {
   const varsSplit = context.ui.createSplitView({
@@ -111,52 +110,28 @@ export function createVarsView({ context, state, actions }) {
       return;
     }
 
-    const btnSaveVar = context.ui.createButton({
-      text: '변수 저장',
-      variant: 'primary',
-      onClick: async () => {
-        let cur = await actions.loadIniContent();
-        cur = upsertConstantVariable(cur, curVar.name, curVar.defaultValue || '0', curVar.isPersist);
-        await actions.applyOrProposeIniChanges(cur, {
-          title: `[${curVar.name}] 변수 저장 제안`,
-          description: `[Constants] 섹션에 '${curVar.name}' 선언 및 기본값(${curVar.defaultValue || '0'}) 반영`,
-          onAccepted: () => {
-            updateVarsList();
-            actions.onVarsChanged?.();
-          },
-        });
-      },
-    });
-
     const btnDeleteVar = context.ui.createButton({
       text: '변수 삭제',
       variant: 'danger',
       onClick: async () => {
         const ok = await context.ui.confirm({
           title: '변수 삭제',
-          message: `정말 '${curVar.name}' 변수를 [Constants]에서 삭제하시겠습니까?`,
+          message: `정말 '${curVar.name}' 변수를 매니저에서 삭제하시겠습니까?\n(상단 [적용]을 누르면 INI 파일에 최종 반영됩니다)`,
           confirmText: '삭제',
           cancelText: '취소',
         });
         if (!ok) return;
 
-        let cur = await actions.loadIniContent();
-        cur = removeConstantVariable(cur, curVar.name);
-        const hasConstants = /^\[Constants\]/im.test(cur);
-        context.logger?.info(`변수 삭제 제안: [${curVar.name}]`);
-        await actions.applyOrProposeIniChanges(cur, {
-          title: `[${curVar.name}] 변수 삭제 제안`,
-          description: hasConstants
-            ? `[Constants] 섹션에서 '${curVar.name}' 변수 선언을 제거합니다.`
-            : `[Constants] 섹션에서 '${curVar.name}' 변수를 제거하고, 남은 변수가 없으므로 [Constants] 섹션을 함께 삭제합니다.`,
-          onAccepted: () => {
-            state.constantVars = state.constantVars.filter(v => v.id !== curVar.id);
-            state.selectedVarId = state.constantVars.length > 0 ? state.constantVars[0].id : null;
-            updateVarsList();
-            updateVarsDetail();
-            actions.onVarsChanged?.();
-          },
-        });
+        state.deletedVarNames = state.deletedVarNames || new Set();
+        state.deletedVarNames.add(curVar.name);
+
+        state.constantVars = state.constantVars.filter(v => v.id !== curVar.id);
+        state.selectedVarId = state.constantVars.length > 0 ? state.constantVars[0].id : null;
+        updateVarsList();
+        updateVarsDetail();
+        actions.onVarsChanged?.();
+        context.logger?.info(`매니저에서 변수 삭제: [${curVar.name}]`);
+        context.ui.showToast(`'${curVar.name}' 변수가 매니저에서 삭제되었습니다. 상단 [적용]을 눌러 파일에 반영하세요.`, 'info');
       },
     });
 
@@ -231,7 +206,7 @@ export function createVarsView({ context, state, actions }) {
       title: `[${curVar.name}] 변수 설정`,
       subtitle: '[Constants] 섹션에 등록될 변수 속성',
       content: formCol,
-      actions: [btnDeleteVar, btnSaveVar].filter(Boolean),
+      actions: [btnDeleteVar].filter(Boolean),
     });
 
     const previewCard = context.ui.createCard({
