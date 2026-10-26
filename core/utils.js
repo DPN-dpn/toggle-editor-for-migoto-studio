@@ -47,7 +47,7 @@ export function getVarDisplayName(varName) {
 }
 
 /**
- * 조건식 문자열을 분석하여 UI 모드(단순, 어드밴스드, 직접 입력)를 판별합니다.
+ * 조건식 문자열을 분석하여 UI 모드(단순, 복합, 직접 입력)를 판별합니다.
  */
 export function detectConditionMode(cond) {
   if (!cond || !cond.trim()) return 'simple';

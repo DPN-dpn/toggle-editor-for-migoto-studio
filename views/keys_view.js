@@ -55,7 +55,7 @@ export function createKeysView({ context, state, actions }) {
   }
 
   const keysSearch = context.ui.createSearchInput({
-    placeholder: '토글 키 / 변수 검색…',
+    placeholder: '토글 키 검색…',
     debounceMs: 150,
     onSearch: (q) => {
       keysSearchQuery = q.toLowerCase();
@@ -309,7 +309,7 @@ export function createKeysView({ context, state, actions }) {
     }
 
     const inputStates = context.ui.createInput({
-      label: '순환 상태값',
+      label: '상태값',
       value: Array.isArray(toggle.states) ? toggle.states.join(', ') : toggle.states,
       placeholder: '0, 1 또는 0, 1, 2, 3',
       description: '단축키를 누를 때마다 순환할 상태값들을 쉼표로 구분하여 작성하세요.',

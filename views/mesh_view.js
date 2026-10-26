@@ -165,7 +165,7 @@ export function createMeshView({ context, state, actions }) {
     }
 
     const btnResetAllMeshConds = context.ui.createButton({
-      text: '전체 조건문 초기화',
+      text: '전체 초기화',
       variant: 'secondary',
       onClick: async () => {
         const confirmed = await context.ui.confirm({
@@ -330,10 +330,10 @@ export function createMeshView({ context, state, actions }) {
     const varNames = getAvailableVariables();
 
     const modeSegment = context.ui.createSegmentedControl({
-      label: '조건문 설정 모드',
+      label: '설정 모드',
       options: [
         { value: 'simple', label: '단순 모드' },
-        { value: 'advanced', label: '어드밴스드 모드' },
+        { value: 'advanced', label: '복합 모드' },
         { value: 'custom', label: '직접 입력' },
       ],
       value: state.meshMode || 'simple',
@@ -521,7 +521,7 @@ export function createMeshView({ context, state, actions }) {
 
       updateSimpleCondition();
     }
-    // [MODE 2] 어드밴스드 모드
+    // [MODE 2] 복합 모드
     else if (state.meshMode === 'advanced') {
       let currentAdvOp = '&&';
       if (curDrawCall.condition && curDrawCall.condition.includes('||') && !curDrawCall.condition.includes('&&')) {
@@ -709,10 +709,10 @@ export function createMeshView({ context, state, actions }) {
     // [MODE 3] 직접 입력
     else {
       const customDesc = curDrawCall.isTTL
-        ? '단순/어드밴스드 모드로 표현되지 않는 복잡한 수식을 자유롭게 작성하세요. 비워두면 상시 반투명 렌더링(TTL Draw)됩니다.'
+        ? '단순/복합 모드로 표현되지 않는 복잡한 수식을 자유롭게 작성하세요. 비워두면 상시 반투명 렌더링(TTL Draw)됩니다.'
         : (curDrawCall.value === 'handling = skip'
-          ? '단순/어드밴스드 모드로 표현되지 않는 수식을 작성하세요. 비워두면 스킵 구문이 들어가지 않아 항상 표시됩니다.'
-          : '단순/어드밴스드 모드로 표현되지 않는 복잡한 수식이나 시스템 변수를 자유롭게 작성하세요. 비워두면 상시 렌더링됩니다.');
+          ? '단순/복합 모드로 표현되지 않는 수식을 작성하세요. 비워두면 스킵 구문이 들어가지 않아 항상 표시됩니다.'
+          : '단순/복합 모드로 표현되지 않는 복잡한 수식이나 시스템 변수를 자유롭게 작성하세요. 비워두면 상시 렌더링됩니다.');
 
       const inputCustomCond = context.ui.createInput({
         label: '조건식',
