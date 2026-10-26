@@ -264,48 +264,49 @@ export function createKeysView({ context, state, actions }) {
     const varOptions = availableVars.map(v => ({ value: v, label: v }));
     varOptions.push({ value: '__custom__', label: '(직접 입력…)' });
 
-    let isCustomVar = !availableVars.includes(toggle.variableName);
+    let isCustomVar = toggle.isCustomVar !== undefined
+      ? toggle.isCustomVar
+      : (!availableVars.includes(toggle.variableName));
+
+    if (toggle.customVarLine === undefined) {
+      toggle.customVarLine = toggle.variableName
+        ? `${toggle.variableName} = ${Array.isArray(toggle.states) ? toggle.states.join(', ') : (toggle.states || '0, 1')}`
+        : '';
+    }
+
     let selectVarWidget = null;
-    let customVarInput = null;
+    let customVarInputEl = null;
+    let inputStatesEl = null;
 
-    selectVarWidget = context.ui.createSelect({
-      label: '조건',
-      value: isCustomVar ? '__custom__' : (toggle.variableName || availableVars[0]),
-      options: varOptions,
-      description: '[변수 설정] 탭에 등록된 변수를 선택하여 이 단축키로 제어합니다.',
-      onChange: (val) => {
-        if (val === '__custom__') {
-          isCustomVar = true;
-          if (customVarInput) customVarInput.style.display = 'block';
-        } else {
-          isCustomVar = false;
-          if (customVarInput) customVarInput.style.display = 'none';
-          toggle.variableName = val;
-          const vStates = getVarStatesList(val);
-          toggle.states = vStates.map(String);
-          inputStates.setValue?.(toggle.states.join(', '));
-          updateKeysList();
-          updatePreview();
-          actions.onKeysChanged?.();
-        }
-      },
-    });
-
-    customVarInput = toElement(context.ui.createInput({
-      label: '직접 입력 변수명',
-      value: toggle.variableName || '',
-      placeholder: '$dress',
+    const inputCustomLine = context.ui.createInput({
+      label: '직접 입력 구문',
+      value: toggle.customVarLine || (toggle.variableName ? `${toggle.variableName} = ${Array.isArray(toggle.states) ? toggle.states.join(', ') : (toggle.states || '0, 1')}` : ''),
+      placeholder: '예: $dress = 0, 1',
+      description: '변수명과 순환할 상태값 구문(예: $var = 0, 1)을 직접 작성하세요.',
       onInput: (val) => {
-        let trimmed = val.trim();
-        if (trimmed && !trimmed.startsWith('$')) trimmed = '$' + trimmed;
-        toggle.variableName = trimmed;
+        toggle.customVarLine = val;
+        const trimmed = val.trim();
+        const eqIdx = trimmed.indexOf('=');
+        if (eqIdx !== -1) {
+          let vName = trimmed.slice(0, eqIdx).trim();
+          if (vName && !vName.startsWith('$')) vName = '$' + vName;
+          toggle.variableName = vName;
+          const valPart = trimmed.slice(eqIdx + 1).trim();
+          const parts = valPart.split(',').map(s => s.trim()).filter(Boolean);
+          toggle.states = parts.length > 0 ? parts : ['0', '1'];
+        } else {
+          let vName = trimmed;
+          if (vName && !vName.startsWith('$') && vName !== '') vName = '$' + vName;
+          toggle.variableName = vName;
+        }
         updateKeysList();
         updatePreview();
         actions.onKeysChanged?.();
       },
-    }));
-    if (customVarInput?.style) {
-      customVarInput.style.display = isCustomVar ? 'block' : 'none';
+    });
+    customVarInputEl = toElement(inputCustomLine);
+    if (customVarInputEl?.style) {
+      customVarInputEl.style.display = isCustomVar ? 'block' : 'none';
     }
 
     const inputStates = context.ui.createInput({
@@ -319,6 +320,46 @@ export function createKeysView({ context, state, actions }) {
         updateKeysList();
         updatePreview();
         actions.onKeysChanged?.();
+      },
+    });
+    inputStatesEl = toElement(inputStates);
+    if (inputStatesEl?.style) {
+      inputStatesEl.style.display = isCustomVar ? 'none' : 'block';
+    }
+
+    selectVarWidget = context.ui.createSelect({
+      label: '타겟 변수',
+      value: isCustomVar ? '__custom__' : (toggle.variableName || availableVars[0]),
+      options: varOptions,
+      description: '[변수 설정] 탭에 등록된 변수를 선택하거나 직접 구문을 작성합니다.',
+      onChange: (val) => {
+        if (val === '__custom__') {
+          isCustomVar = true;
+          toggle.isCustomVar = true;
+          if (!toggle.customVarLine) {
+            toggle.customVarLine = toggle.variableName
+              ? `${toggle.variableName} = ${Array.isArray(toggle.states) ? toggle.states.join(', ') : (toggle.states || '0, 1')}`
+              : '$var = 0, 1';
+          }
+          inputCustomLine.setValue?.(toggle.customVarLine);
+          if (customVarInputEl) customVarInputEl.style.display = 'block';
+          if (inputStatesEl) inputStatesEl.style.display = 'none';
+          updateKeysList();
+          updatePreview();
+          actions.onKeysChanged?.();
+        } else {
+          isCustomVar = false;
+          toggle.isCustomVar = false;
+          if (customVarInputEl) customVarInputEl.style.display = 'none';
+          if (inputStatesEl) inputStatesEl.style.display = 'block';
+          toggle.variableName = val;
+          const vStates = getVarStatesList(val);
+          toggle.states = vStates.map(String);
+          inputStates.setValue?.(toggle.states.join(', '));
+          updateKeysList();
+          updatePreview();
+          actions.onKeysChanged?.();
+        }
       },
     });
 
@@ -352,8 +393,8 @@ export function createKeysView({ context, state, actions }) {
         toElement(keyInput),
         toElement(selectType),
         toElement(selectVarWidget),
-        customVarInput,
-        toElement(inputStates),
+        customVarInputEl,
+        inputStatesEl,
       ].filter(Boolean),
     });
 

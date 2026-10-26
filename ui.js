@@ -226,13 +226,31 @@ export async function renderToggleManagerTab(container, context) {
 
       // 5. [Key...] 토글 섹션들 동기화
       state.toggles.forEach(t => {
-        const statesStr = Array.isArray(t.states) ? t.states.join(', ') : t.states;
         const props = {
           key: t.key || 'no_modifiers VK_UP',
           type: t.type || 'cycle',
           condition: '$active == 1',
         };
-        if (t.variableName) {
+        if (t.isCustomVar && t.customVarLine !== undefined) {
+          const trimmedLine = t.customVarLine.trim();
+          const eqIdx = trimmedLine.indexOf('=');
+          if (eqIdx !== -1) {
+            const k = trimmedLine.slice(0, eqIdx).trim();
+            const v = trimmedLine.slice(eqIdx + 1).trim();
+            if (k) {
+              props[k] = v;
+              if (k.startsWith('$')) {
+                currentFull = ensureConstantVariable(currentFull, k, 0);
+              }
+            }
+          } else if (trimmedLine) {
+            props[trimmedLine] = '0, 1';
+            if (trimmedLine.startsWith('$')) {
+              currentFull = ensureConstantVariable(currentFull, trimmedLine, 0);
+            }
+          }
+        } else if (t.variableName) {
+          const statesStr = Array.isArray(t.states) ? t.states.join(', ') : t.states;
           props[t.variableName] = statesStr;
           currentFull = ensureConstantVariable(currentFull, t.variableName, 0);
         }

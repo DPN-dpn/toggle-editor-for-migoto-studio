@@ -430,7 +430,11 @@ export function buildToggleSnippet(toggle) {
   if (toggle.type) {
     lines.push(`type = ${toggle.type}`);
   }
-  if (toggle.variableName) {
+  if (toggle.isCustomVar && toggle.customVarLine !== undefined) {
+    if (toggle.customVarLine.trim()) {
+      lines.push(toggle.customVarLine.trim());
+    }
+  } else if (toggle.variableName) {
     const statesStr = Array.isArray(toggle.states) ? toggle.states.join(', ') : toggle.states;
     lines.push(`${toggle.variableName} = ${statesStr}`);
   }
